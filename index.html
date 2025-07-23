@@ -14,7 +14,6 @@
                 <div class="logo">
                     <i class="fas fa-language"></i>
                     <h1>AudioTranslate</h1>
-                    <span class="demo-badge" id="demoBadge" style="display: none;">DEMO MODE</span>
                 </div>
                 <p class="tagline">Powered by Azure AI</p>
             </div>
@@ -110,34 +109,6 @@
         </main>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/microsoft-cognitiveservices-speech-sdk@1.24.1/distrib/browser/microsoft.cognitiveservices.speech.sdk.bundle.min.js" 
-            onerror="loadFallbackSDK()">
-    </script>
-    <script>
-        // Fallback to original CDN if jsdelivr fails
-        function loadFallbackSDK() {
-            console.log('Primary CDN failed, trying fallback...');
-            const fallbackScript = document.createElement('script');
-            fallbackScript.src = 'https://aka.ms/SpeechSDK/speechsdk-1.24.1.min.js';
-            fallbackScript.onerror = function() {
-                console.error('Both CDNs failed to load Azure Speech SDK');
-                alert('Failed to load Azure Speech SDK from multiple sources. Please check your internet connection and try again.');
-            };
-            document.head.appendChild(fallbackScript);
-        }
-
-        // Wait for Azure SDK to load before initializing the app
-        function waitForSDKAndInitialize() {
-            if (typeof SpeechSDK !== 'undefined' || typeof Microsoft !== 'undefined') {
-                console.log('Azure Speech SDK loaded successfully');
-                // The app will initialize via DOMContentLoaded event in script.js
-            } else {
-                console.log('Waiting for Azure Speech SDK...');
-                setTimeout(waitForSDKAndInitialize, 100);
-            }
-        }
-        waitForSDKAndInitialize();
-    </script>
     <script src="script.js"></script>
 </body>
 </html>
