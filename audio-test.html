@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Test Tool</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        button {
+            background: #007acc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #005a9e;
+        }
+        .result {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+        audio {
+            width: 100%;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎤 Audio Test Tool</h1>
+    <p>Use this tool to test your audio files before uploading to the translator app.</p>
+
+    <div class="test-section">
+        <h2>📁 Audio File Test</h2>
+        <input type="file" id="audioFile" accept=".mp3,.wav,.m4a" />
+        <br>
+        <audio id="audioPlayer" controls style="display: none;"></audio>
+        <br>
+        <button onclick="analyzeAudio()">🔍 Analyze Audio</button>
+        <div id="audioAnalysis" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>🎙️ Record Test Audio</h2>
+        <p>Record a short English phrase to test:</p>
+        <button id="recordBtn" onclick="toggleRecording()">🔴 Start Recording</button>
+        <button onclick="playRecording()" id="playBtn" style="display: none;">▶️ Play Recording</button>
+        <audio id="recordedAudio" controls style="display: none;"></audio>
+        <div id="recordingStatus" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>✅ Audio Requirements Checklist</h2>
+        <ul>
+            <li>✅ File format: MP3, WAV, or M4A</li>
+            <li>✅ Contains clear English speech</li>
+            <li>✅ Minimal background noise</li>
+            <li>✅ Good audio quality</li>
+            <li>✅ File size under 25MB</li>
+            <li>✅ Speech is clearly audible</li>
+        </ul>
+    </div>
+
+    <script>
+        let mediaRecorder;
+        let recordedChunks = [];
+        let isRecording = false;
+
+        function analyzeAudio() {
+            const fileInput = document.getElementById('audioFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select an audio file first');
+                return;
+            }
+
+            const audioPlayer = document.getElementById('audioPlayer');
+            const analysisDiv = document.getElementById('audioAnalysis');
+            
+            // Display audio player
+            audioPlayer.src = URL.createObjectURL(file);
+            audioPlayer.style.display = 'block';
+            
+            // Show analysis
+            analysisDiv.style.display = 'block';
+            analysisDiv.innerHTML = `
+📊 Audio File Analysis:
+━━━━━━━━━━━━━━━━━━━━
+
+📁 File Name: ${file.name}
+📏 File Size: ${(file.size / 1024 / 1024).toFixed(2)} MB
+🎵 File Type: ${file.type || 'Unknown'}
+⏱️ Duration: Calculating...
+
+✅ Status Checks:
+${file.size <= 25 * 1024 * 1024 ? '✅' : '❌'} File size (${(file.size / 1024 / 1024).toFixed(2)} MB ${file.size <= 25 * 1024 * 1024 ? '≤' : '>'} 25 MB)
+${['audio/mp3', 'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/m4a'].includes(file.type) ? '✅' : '❌'} Supported format
+            `;
+
+            // Get duration when metadata loads
+            audioPlayer.addEventListener('loadedmetadata', function() {
+                const duration = audioPlayer.duration;
+                const minutes = Math.floor(duration / 60);
+                const seconds = Math.floor(duration % 60);
+                
+                analysisDiv.innerHTML = analysisDiv.innerHTML.replace(
+                    'Duration: Calculating...',
+                    `Duration: ${minutes}:${seconds.toString().padStart(2, '0')}`
+                );
+            });
+        }
+
+        async function toggleRecording() {
+            if (!isRecording) {
+                await startRecording();
+            } else {
+                stopRecording();
+            }
+        }
+
+        async function startRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                recordedChunks = [];
+
+                mediaRecorder.ondataavailable = function(event) {
+                    recordedChunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = function() {
+                    const blob = new Blob(recordedChunks, { type: 'audio/wav' });
+                    const audioURL = URL.createObjectURL(blob);
+                    
+                    const recordedAudio = document.getElementById('recordedAudio');
+                    recordedAudio.src = audioURL;
+                    recordedAudio.style.display = 'block';
+                    
+                    document.getElementById('playBtn').style.display = 'inline-block';
+                    
+                    document.getElementById('recordingStatus').style.display = 'block';
+                    document.getElementById('recordingStatus').innerHTML = `
+🎙️ Recording Complete!
+━━━━━━━━━━━━━━━━━━━━
+
+✅ Audio recorded successfully
+📏 Size: ${(blob.size / 1024).toFixed(1)} KB
+🎵 Format: WAV
+▶️ Click "Play Recording" to test
+
+💡 Tip: If you can hear your voice clearly, the recording should work well with the speech recognition.
+                    `;
+                };
+
+                mediaRecorder.start();
+                isRecording = true;
+                
+                document.getElementById('recordBtn').innerHTML = '⏹️ Stop Recording';
+                document.getElementById('recordingStatus').style.display = 'block';
+                document.getElementById('recordingStatus').innerHTML = '🔴 Recording... Speak clearly in English!';
+                
+            } catch (err) {
+                alert('Error accessing microphone: ' + err.message);
+            }
+        }
+
+        function stopRecording() {
+            mediaRecorder.stop();
+            mediaRecorder.stream.getTracks().forEach(track => track.stop());
+            isRecording = false;
+            document.getElementById('recordBtn').innerHTML = '🔴 Start Recording';
+        }
+
+        function playRecording() {
+            document.getElementById('recordedAudio').play();
+        }
+    </script>
+</body>
+</html>

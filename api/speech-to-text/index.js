@@ -48,12 +48,30 @@ module.exports = async function (context, req) {
         // Convert base64 audio data to buffer
         const audioBuffer = Buffer.from(req.body.audioData, 'base64');
         
+        // Log audio buffer info for debugging
+        context.log(`Audio buffer size: ${audioBuffer.length} bytes`);
+        context.log(`Audio format: ${req.body.format || 'unknown'}`);
+        
         // Configure Azure Speech SDK
         const speechConfig = sdk.SpeechConfig.fromSubscription(speechKey, speechRegion);
         speechConfig.speechRecognitionLanguage = "en-US";
+        
+        // Set audio format based on the uploaded file
+        let audioFormat;
+        const format = req.body.format || '';
+        
+        if (format.includes('wav')) {
+            audioFormat = sdk.AudioStreamFormat.getWaveFormatPCM(16000, 16, 1);
+        } else if (format.includes('mp3')) {
+            // For MP3, we'll use the default format and let Azure handle it
+            audioFormat = sdk.AudioStreamFormat.getWaveFormatPCM(16000, 16, 1);
+        } else {
+            // Default format for other audio types
+            audioFormat = sdk.AudioStreamFormat.getWaveFormatPCM(16000, 16, 1);
+        }
 
         // Create audio config from buffer
-        const pushStream = sdk.AudioInputStream.createPushStream();
+        const pushStream = sdk.AudioInputStream.createPushStream(audioFormat);
         pushStream.write(audioBuffer);
         pushStream.close();
 
@@ -84,18 +102,30 @@ module.exports = async function (context, req) {
                 confidence: result.properties ? result.properties.getProperty(sdk.PropertyId.SpeechServiceResponse_JsonResult) : null
             };
         } else if (result.reason === sdk.ResultReason.NoMatch) {
+            context.log(`No speech detected. Reason: ${result.reason}, NoMatchReason: ${result.noMatchReason}`);
             context.res.status = 400;
             context.res.body = {
                 success: false,
                 error: "No speech detected",
-                details: "Could not detect any speech in the provided audio file"
+                details: "Could not detect any speech in the provided audio file. Please ensure the audio contains clear English speech.",
+                troubleshooting: {
+                    suggestions: [
+                        "Check that the audio file contains clear speech",
+                        "Ensure the audio is in English",
+                        "Try reducing background noise",
+                        "Check audio quality and volume",
+                        "Supported formats: WAV (recommended), MP3, M4A"
+                    ]
+                }
             };
         } else {
+            context.log(`Speech recognition failed. Reason: ${result.reason}, Error: ${result.errorDetails}`);
             context.res.status = 500;
             context.res.body = {
                 success: false,
                 error: "Speech recognition failed",
-                details: result.errorDetails || "Unknown error occurred during speech recognition"
+                details: result.errorDetails || "Unknown error occurred during speech recognition",
+                reason: result.reason
             };
         }
 
