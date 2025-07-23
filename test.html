@@ -35,7 +35,16 @@
         <h2>📁 Test 3: Upload Audio File</h2>
         <input type="file" id="audioFile" accept=".mp3,.wav,.m4a" />
         <button onclick="testUploadedFile()">🎯 Test Uploaded File</button>
+        <button onclick="convertAndTestFile()">🔄 Convert to Mono & Test</button>
         <div id="uploadResult" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="section">
+        <h2>🔧 Audio Format Info</h2>
+        <p><strong>Current Issue:</strong> Azure Speech Services works best with <strong>mono audio</strong> (single channel).</p>
+        <p><strong>Your audio might be stereo</strong> which can cause recognition failures.</p>
+        <button onclick="checkAudioFormat()">📊 Check Last Uploaded File Format</button>
+        <div id="formatResult" class="result" style="display: none;"></div>
     </div>
 
     <script>
@@ -160,7 +169,179 @@ Error: ${error.message}
                 return;
             }
 
-            await testAudioBlob(file, 'uploadResult', 'Uploaded File');
+            await testAudioBlob(file, 'uploadResult', 'Uploaded File (Original)');
+        }
+
+        async function convertAndTestFile() {
+            const fileInput = document.getElementById('audioFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select a file first');
+                return;
+            }
+
+            const resultDiv = document.getElementById('uploadResult');
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result';
+            resultDiv.innerHTML = '🔄 Converting audio to mono format...\n';
+
+            try {
+                const monoBlob = await convertToMono(file);
+                resultDiv.innerHTML += `✅ Converted to mono! Original: ${(file.size/1024).toFixed(1)}KB → Mono: ${(monoBlob.size/1024).toFixed(1)}KB\n\n`;
+                await testAudioBlob(monoBlob, 'uploadResult', 'Uploaded File (Converted to Mono)');
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML += `❌ Conversion failed: ${error.message}\n\nTrying original file instead...\n\n`;
+                await testAudioBlob(file, 'uploadResult', 'Uploaded File (Original - Conversion Failed)');
+            }
+        }
+
+        async function checkAudioFormat() {
+            const fileInput = document.getElementById('audioFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select a file first');
+                return;
+            }
+
+            const resultDiv = document.getElementById('formatResult');
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result';
+            resultDiv.innerHTML = '🔍 Analyzing audio format...\n';
+
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const arrayBuffer = await file.arrayBuffer();
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+                const channels = audioBuffer.numberOfChannels;
+                const sampleRate = audioBuffer.sampleRate;
+                const duration = audioBuffer.duration;
+
+                resultDiv.innerHTML = `📊 Audio Format Analysis:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📁 File: ${file.name}
+📏 Size: ${(file.size / 1024 / 1024).toFixed(2)} MB
+🎵 Format: ${file.type || 'Unknown'}
+⏱️ Duration: ${duration.toFixed(2)} seconds
+
+🔊 Audio Properties:
+   • Channels: ${channels} ${channels === 1 ? '(MONO ✅)' : channels === 2 ? '(STEREO ⚠️)' : '(MULTI-CHANNEL ❌)'}
+   • Sample Rate: ${sampleRate} Hz ${sampleRate === 16000 ? '(OPTIMAL ✅)' : sampleRate === 44100 ? '(GOOD ✓)' : '(⚠️)'}
+   • Bit Depth: ~16-bit (estimated)
+
+💡 Recommendations:
+${channels === 1 ? '✅ Mono audio - should work well with Azure Speech' : '⚠️ Convert to MONO for better Azure Speech recognition'}
+${sampleRate === 16000 ? '✅ Optimal sample rate for speech recognition' : '💡 16kHz sample rate is optimal for speech recognition'}
+
+🎯 Action: ${channels === 1 && sampleRate === 16000 ? 'Your audio is already optimized!' : 'Try the "Convert to Mono & Test" button above'}`;
+
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = `❌ Could not analyze audio format: ${error.message}
+
+This might indicate:
+• Unsupported audio format
+• Corrupted audio file
+• Browser compatibility issue
+
+Try using a WAV file for best results.`;
+            }
+        }
+
+        async function convertToMono(file) {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Read and decode the audio file
+            const arrayBuffer = await file.arrayBuffer();
+            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            
+            // If already mono, return as-is
+            if (audioBuffer.numberOfChannels === 1) {
+                return file;
+            }
+            
+            // Convert to mono by mixing channels
+            const length = audioBuffer.length;
+            const sampleRate = 16000; // Optimal for Azure Speech
+            const numberOfChannels = 1; // Mono
+            
+            // Create offline context for processing
+            const offlineContext = new OfflineAudioContext(numberOfChannels, Math.floor(length * sampleRate / audioBuffer.sampleRate), sampleRate);
+            
+            // Create buffer source
+            const source = offlineContext.createBufferSource();
+            source.buffer = audioBuffer;
+            
+            // Create channel merger to mix stereo to mono
+            if (audioBuffer.numberOfChannels > 1) {
+                const merger = offlineContext.createChannelMerger(1);
+                const splitter = offlineContext.createChannelSplitter(audioBuffer.numberOfChannels);
+                
+                source.connect(splitter);
+                
+                // Mix all channels to mono
+                for (let i = 0; i < audioBuffer.numberOfChannels; i++) {
+                    const gainNode = offlineContext.createGain();
+                    gainNode.gain.value = 1 / audioBuffer.numberOfChannels; // Equal mix
+                    splitter.connect(gainNode, i);
+                    gainNode.connect(merger, 0, 0);
+                }
+                
+                merger.connect(offlineContext.destination);
+            } else {
+                source.connect(offlineContext.destination);
+            }
+            
+            source.start();
+            
+            // Render the audio
+            const renderedBuffer = await offlineContext.startRendering();
+            
+            // Convert to WAV blob
+            return audioBufferToWav(renderedBuffer);
+        }
+
+        // Convert AudioBuffer to WAV blob (mono, 16kHz, 16-bit)
+        function audioBufferToWav(buffer) {
+            const length = buffer.length;
+            const arrayBuffer = new ArrayBuffer(44 + length * 2);
+            const view = new DataView(arrayBuffer);
+
+            // WAV header
+            const writeString = (offset, string) => {
+                for (let i = 0; i < string.length; i++) {
+                    view.setUint8(offset + i, string.charCodeAt(i));
+                }
+            };
+
+            writeString(0, 'RIFF');
+            view.setUint32(4, 36 + length * 2, true);
+            writeString(8, 'WAVE');
+            writeString(12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true); // PCM
+            view.setUint16(22, 1, true); // Mono
+            view.setUint32(24, buffer.sampleRate, true);
+            view.setUint32(28, buffer.sampleRate * 2, true);
+            view.setUint16(32, 2, true);
+            view.setUint16(34, 16, true);
+            writeString(36, 'data');
+            view.setUint32(40, length * 2, true);
+
+            // Convert float samples to 16-bit PCM
+            const channelData = buffer.getChannelData(0);
+            let offset = 44;
+            for (let i = 0; i < length; i++) {
+                const sample = Math.max(-1, Math.min(1, channelData[i]));
+                view.setInt16(offset, sample * 0x7FFF, true);
+                offset += 2;
+            }
+
+            return new Blob([arrayBuffer], { type: 'audio/wav' });
         }
 
         async function testAudioBlob(blob, resultDivId, testName) {
