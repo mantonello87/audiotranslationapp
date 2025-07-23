@@ -1,30 +1,232 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>File Upload Test</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quick Speech Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 8px; }
+        button { background: #007acc; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin: 5px; }
+        .result { background: #f5f5f5; padding: 15px; border-radius: 4px; margin: 10px 0; white-space: pre-wrap; font-family: monospace; }
+        .error { background: #ffe6e6; border-left: 4px solid #ff0000; }
+        .success { background: #e6ffe6; border-left: 4px solid #00ff00; }
+    </style>
 </head>
 <body>
-    <h1>Simple File Upload Test</h1>
-    <input type="file" id="testFile" accept="audio/*">
-    <p id="result">No file selected</p>
+    <h1>🔬 Quick Speech Recognition Test</h1>
     
+    <div class="section">
+        <h2>🎯 Test 1: Azure Configuration Check</h2>
+        <button onclick="testAzureConfig()">Test Azure Setup</button>
+        <div id="configResult" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="section">
+        <h2>🎤 Test 2: Record Simple Audio</h2>
+        <p>Record yourself saying: <strong>"Hello world"</strong></p>
+        <button id="recordBtn" onclick="toggleRecording()">🔴 Start Recording</button>
+        <button id="testRecordBtn" onclick="testRecording()" style="display: none;">🎯 Test Recording</button>
+        <audio id="recordedAudio" controls style="display: none; width: 100%; margin: 10px 0;"></audio>
+        <div id="recordResult" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="section">
+        <h2>📁 Test 3: Upload Audio File</h2>
+        <input type="file" id="audioFile" accept=".mp3,.wav,.m4a" />
+        <button onclick="testUploadedFile()">🎯 Test Uploaded File</button>
+        <div id="uploadResult" class="result" style="display: none;"></div>
+    </div>
+
     <script>
-        console.log('Test script loaded');
-        const fileInput = document.getElementById('testFile');
-        const result = document.getElementById('result');
-        
-        fileInput.addEventListener('change', function(e) {
-            console.log('File input changed:', e.target.files);
-            if (e.target.files.length > 0) {
-                const file = e.target.files[0];
-                result.textContent = `Selected: ${file.name} (${file.size} bytes)`;
-                console.log('File details:', file);
-            } else {
-                result.textContent = 'No file selected';
+        let mediaRecorder;
+        let recordedBlob = null;
+        let isRecording = false;
+
+        async function testAzureConfig() {
+            const resultDiv = document.getElementById('configResult');
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '🔄 Testing Azure configuration...\n';
+
+            try {
+                // Test with minimal empty request to check Azure keys
+                const response = await fetch('/api/speech-to-text', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({}) // Empty request to trigger validation
+                });
+
+                const result = await response.json();
+                
+                if (result.error === 'Azure Speech Service configuration missing') {
+                    resultDiv.className = 'result error';
+                    resultDiv.innerHTML = `❌ AZURE CONFIGURATION PROBLEM
+
+Error: ${result.error}
+Details: ${result.details}
+
+🔧 SOLUTION NEEDED:
+1. Go to Azure Portal
+2. Navigate to your Static Web App
+3. Go to Configuration > Application Settings
+4. Add these environment variables:
+   - AZURE_SPEECH_KEY: (your speech service key)
+   - AZURE_SPEECH_REGION: (your speech service region)
+
+Debug Info: ${JSON.stringify(result.debug, null, 2)}`;
+                } else if (result.error === 'Missing audio data') {
+                    resultDiv.className = 'result success';
+                    resultDiv.innerHTML = `✅ AZURE CONFIGURATION IS WORKING!
+
+The API responded correctly to the test request.
+Azure Speech Service keys are properly configured.
+
+Next step: Test with actual audio data.`;
+                } else {
+                    resultDiv.className = 'result error';
+                    resultDiv.innerHTML = `⚠️ UNEXPECTED RESPONSE:
+
+${JSON.stringify(result, null, 2)}`;
+                }
+
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = `❌ API CONNECTION FAILED
+
+Error: ${error.message}
+
+🔧 POSSIBLE CAUSES:
+1. Azure Function is not deployed
+2. Network connectivity issues
+3. API endpoint is incorrect
+4. Azure Function is not running`;
             }
-        });
-        
-        console.log('Event listener attached');
+        }
+
+        async function toggleRecording() {
+            if (!isRecording) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    const chunks = [];
+
+                    mediaRecorder.ondataavailable = (event) => chunks.push(event.data);
+                    mediaRecorder.onstop = () => {
+                        recordedBlob = new Blob(chunks, { type: 'audio/wav' });
+                        const audioURL = URL.createObjectURL(recordedBlob);
+                        
+                        const audioElement = document.getElementById('recordedAudio');
+                        audioElement.src = audioURL;
+                        audioElement.style.display = 'block';
+                        
+                        document.getElementById('testRecordBtn').style.display = 'inline-block';
+                        
+                        const resultDiv = document.getElementById('recordResult');
+                        resultDiv.style.display = 'block';
+                        resultDiv.className = 'result';
+                        resultDiv.innerHTML = `✅ Recording complete! (${(recordedBlob.size / 1024).toFixed(1)} KB)\n\nClick "Test Recording" to test speech recognition.`;
+                    };
+
+                    mediaRecorder.start();
+                    isRecording = true;
+                    document.getElementById('recordBtn').innerHTML = '⏹️ Stop Recording (say "Hello world")';
+                    
+                } catch (error) {
+                    alert('Microphone access denied: ' + error.message);
+                }
+            } else {
+                mediaRecorder.stop();
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                isRecording = false;
+                document.getElementById('recordBtn').innerHTML = '🔴 Start Recording';
+            }
+        }
+
+        async function testRecording() {
+            if (!recordedBlob) {
+                alert('No recording available');
+                return;
+            }
+
+            await testAudioBlob(recordedBlob, 'recordResult', 'Recorded Audio');
+        }
+
+        async function testUploadedFile() {
+            const fileInput = document.getElementById('audioFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select a file first');
+                return;
+            }
+
+            await testAudioBlob(file, 'uploadResult', 'Uploaded File');
+        }
+
+        async function testAudioBlob(blob, resultDivId, testName) {
+            const resultDiv = document.getElementById(resultDivId);
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result';
+            resultDiv.innerHTML = `🔄 Testing ${testName}...\n`;
+
+            try {
+                // Convert to base64
+                const base64 = await blobToBase64(blob);
+                
+                resultDiv.innerHTML += `📝 Audio converted to base64 (${base64.length} chars)\n`;
+                resultDiv.innerHTML += `🌐 Sending to Azure Speech Service...\n`;
+
+                const response = await fetch('/api/speech-to-text', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        audioData: base64,
+                        format: blob.type || 'audio/wav'
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    resultDiv.className = 'result success';
+                    resultDiv.innerHTML += `\n✅ SUCCESS! Speech recognized:\n\n`;
+                    resultDiv.innerHTML += `🗣️ Text: "${result.text}"\n`;
+                    resultDiv.innerHTML += `📊 Debug: ${JSON.stringify(result.debug, null, 2)}`;
+                } else {
+                    resultDiv.className = 'result error';
+                    resultDiv.innerHTML += `\n❌ FAILED: ${result.error}\n\n`;
+                    resultDiv.innerHTML += `📝 Details: ${result.details}\n\n`;
+                    
+                    if (result.debug) {
+                        resultDiv.innerHTML += `🔍 Debug Information:\n`;
+                        resultDiv.innerHTML += JSON.stringify(result.debug, null, 2) + '\n\n';
+                    }
+                    
+                    if (result.troubleshooting) {
+                        resultDiv.innerHTML += `💡 Suggestions:\n`;
+                        result.troubleshooting.suggestions?.forEach((suggestion, i) => {
+                            resultDiv.innerHTML += `   ${i + 1}. ${suggestion}\n`;
+                        });
+                    }
+                }
+
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML += `\n❌ ERROR: ${error.message}`;
+            }
+        }
+
+        function blobToBase64(blob) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const base64 = reader.result.split(',')[1];
+                    resolve(base64);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        }
     </script>
 </body>
 </html>

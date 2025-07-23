@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speech Recognition Diagnostics</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .section {
+            margin: 25px 0;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+        }
+        .error { background: #ffe6e6; border-color: #ff9999; }
+        .success { background: #e6ffe6; border-color: #99ff99; }
+        .warning { background: #fff3cd; border-color: #ffeaa7; }
+        .info { background: #e6f3ff; border-color: #99ccff; }
+        
+        button {
+            background: #007acc;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 8px 4px;
+            font-size: 14px;
+        }
+        button:hover { background: #005a9e; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        
+        .result {
+            margin: 15px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 4px solid #007acc;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .progress {
+            width: 100%;
+            height: 20px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-bar {
+            height: 100%;
+            background: #007acc;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        
+        .file-input {
+            margin: 10px 0;
+            padding: 20px;
+            border: 2px dashed #ccc;
+            border-radius: 6px;
+            text-align: center;
+            background: #fafafa;
+        }
+        .file-input.dragover {
+            border-color: #007acc;
+            background: #f0f8ff;
+        }
+        
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .status-item {
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        audio {
+            width: 100%;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Speech Recognition Diagnostics</h1>
+        <p>Comprehensive testing and debugging tool for your Azure Speech Services.</p>
+
+        <div class="section info">
+            <h2>📋 System Check</h2>
+            <button onclick="runSystemCheck()">🔍 Run System Diagnostics</button>
+            <div id="systemStatus" class="status-grid" style="display: none;"></div>
+        </div>
+
+        <div class="section">
+            <h2>🎤 Audio File Test</h2>
+            <div class="file-input" id="dropZone">
+                <p>📁 Drag and drop an audio file here, or click to browse</p>
+                <input type="file" id="audioFile" accept=".mp3,.wav,.m4a,.aac" style="display: none;" />
+                <button onclick="document.getElementById('audioFile').click()">Browse Files</button>
+            </div>
+            
+            <div id="audioInfo" style="display: none;">
+                <h3>Audio Preview</h3>
+                <audio id="audioPlayer" controls></audio>
+                <div id="audioDetails" class="result"></div>
+            </div>
+            
+            <button id="testBtn" onclick="testSpeechRecognition()" disabled>🎯 Test Speech Recognition</button>
+            <div class="progress" id="testProgress" style="display: none;">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+            <div id="testResults" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="section">
+            <h2>🎙️ Record & Test</h2>
+            <p>Record a sample to test your microphone and speech recognition:</p>
+            <button id="recordBtn" onclick="toggleRecording()">🔴 Start Recording</button>
+            <button id="playRecordBtn" onclick="playRecording()" style="display: none;">▶️ Play Recording</button>
+            <button id="testRecordBtn" onclick="testRecordedAudio()" style="display: none;">🎯 Test Recorded Audio</button>
+            
+            <div id="recordingStatus" class="result" style="display: none;"></div>
+            <audio id="recordedAudio" controls style="display: none;"></audio>
+        </div>
+
+        <div class="section warning">
+            <h2>⚠️ Common Issues & Solutions</h2>
+            <div id="troubleshooting">
+                <h3>🔧 Quick Fixes</h3>
+                <ul>
+                    <li><strong>Environment Variables:</strong> Ensure AZURE_SPEECH_KEY and AZURE_SPEECH_REGION are set in Azure Portal</li>
+                    <li><strong>Audio Format:</strong> WAV files work best - use the audio converter if needed</li>
+                    <li><strong>Audio Quality:</strong> Clear speech, minimal background noise</li>
+                    <li><strong>Region Mismatch:</strong> Speech service region must match the configured region</li>
+                    <li><strong>Key Issues:</strong> Verify your Azure Speech Service key is active and has quota</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let mediaRecorder;
+        let recordedChunks = [];
+        let isRecording = false;
+        let currentFile = null;
+        let recordedBlob = null;
+
+        // API endpoint - adjust this to your deployed API URL
+        const API_BASE = '/api'; // For deployed version
+        // const API_BASE = 'http://localhost:7071/api'; // For local testing
+
+        // File handling
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('audioFile');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) handleFile(e.target.files[0]);
+        });
+
+        function handleFile(file) {
+            currentFile = file;
+            
+            // Show audio info
+            const audioInfo = document.getElementById('audioInfo');
+            const audioPlayer = document.getElementById('audioPlayer');
+            const audioDetails = document.getElementById('audioDetails');
+            
+            audioPlayer.src = URL.createObjectURL(file);
+            audioInfo.style.display = 'block';
+            
+            audioDetails.innerHTML = `
+📁 File Information:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📂 Name: ${file.name}
+📏 Size: ${(file.size / 1024 / 1024).toFixed(2)} MB
+🎵 Type: ${file.type || 'Unknown'}
+⏰ Modified: ${new Date(file.lastModified).toLocaleString()}
+
+✅ File loaded successfully - you can now test speech recognition
+            `;
+            
+            document.getElementById('testBtn').disabled = false;
+        }
+
+        async function runSystemCheck() {
+            const statusDiv = document.getElementById('systemStatus');
+            statusDiv.style.display = 'grid';
+            statusDiv.innerHTML = `
+                <div class="status-item info">🔄 Checking API connection...</div>
+                <div class="status-item info">🔄 Testing Azure configuration...</div>
+                <div class="status-item info">🔄 Verifying browser support...</div>
+                <div class="status-item info">🔄 Checking microphone access...</div>
+            `;
+
+            const results = [];
+
+            // Test API connection
+            try {
+                const response = await fetch(`${API_BASE}/speech-to-text`, {
+                    method: 'OPTIONS'
+                });
+                results.push({
+                    title: 'API Connection',
+                    status: response.ok ? 'success' : 'error',
+                    message: response.ok ? '✅ API is accessible' : '❌ API connection failed'
+                });
+            } catch (error) {
+                results.push({
+                    title: 'API Connection',
+                    status: 'error',
+                    message: `❌ API unreachable: ${error.message}`
+                });
+            }
+
+            // Test browser support
+            const hasAudioContext = !!(window.AudioContext || window.webkitAudioContext);
+            const hasMediaDevices = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+            const hasFileAPI = !!(window.File && window.FileReader && window.Blob);
+
+            results.push({
+                title: 'Browser Support',
+                status: hasAudioContext && hasMediaDevices && hasFileAPI ? 'success' : 'warning',
+                message: hasAudioContext && hasMediaDevices && hasFileAPI ? 
+                    '✅ Browser fully supported' : 
+                    '⚠️ Some features may not work'
+            });
+
+            // Test microphone access
+            try {
+                await navigator.mediaDevices.getUserMedia({ audio: true });
+                results.push({
+                    title: 'Microphone Access',
+                    status: 'success',
+                    message: '✅ Microphone access granted'
+                });
+            } catch (error) {
+                results.push({
+                    title: 'Microphone Access',
+                    status: 'warning',
+                    message: '⚠️ Microphone access denied or unavailable'
+                });
+            }
+
+            // Test with a minimal request to Azure
+            try {
+                const testResponse = await fetch(`${API_BASE}/speech-to-text`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ audioData: 'dGVzdA==' }) // minimal test data
+                });
+                
+                const testData = await testResponse.json();
+                results.push({
+                    title: 'Azure Configuration',
+                    status: testData.error === 'Azure Speech Service configuration missing' ? 'error' : 'success',
+                    message: testData.error === 'Azure Speech Service configuration missing' ? 
+                        '❌ Azure keys not configured' : 
+                        '✅ Azure configuration appears valid'
+                });
+            } catch (error) {
+                results.push({
+                    title: 'Azure Configuration',
+                    status: 'error',
+                    message: `❌ Azure test failed: ${error.message}`
+                });
+            }
+
+            // Display results
+            statusDiv.innerHTML = results.map(result => `
+                <div class="status-item ${result.status}">
+                    <h4>${result.title}</h4>
+                    <p>${result.message}</p>
+                </div>
+            `).join('');
+        }
+
+        async function testSpeechRecognition() {
+            if (!currentFile) {
+                alert('Please select an audio file first');
+                return;
+            }
+
+            const resultsDiv = document.getElementById('testResults');
+            const progressDiv = document.getElementById('testProgress');
+            const progressBar = document.getElementById('progressBar');
+            
+            resultsDiv.style.display = 'block';
+            progressDiv.style.display = 'block';
+            
+            resultsDiv.innerHTML = '🔄 Starting speech recognition test...\n';
+            progressBar.style.width = '10%';
+
+            try {
+                // Convert file to base64
+                resultsDiv.innerHTML += '📝 Converting audio to base64...\n';
+                progressBar.style.width = '30%';
+                
+                const base64Audio = await fileToBase64(currentFile);
+                
+                resultsDiv.innerHTML += '🌐 Sending request to Azure Speech Service...\n';
+                progressBar.style.width = '50%';
+
+                const response = await fetch(`${API_BASE}/speech-to-text`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        audioData: base64Audio,
+                        format: currentFile.type
+                    })
+                });
+
+                progressBar.style.width = '80%';
+                const result = await response.json();
+                progressBar.style.width = '100%';
+
+                resultsDiv.innerHTML += '\n📊 DETAILED TEST RESULTS:\n';
+                resultsDiv.innerHTML += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n';
+
+                if (result.success) {
+                    resultsDiv.innerHTML += `✅ SUCCESS! Speech recognized:\n\n`;
+                    resultsDiv.innerHTML += `🗣️ Recognized Text: "${result.text}"\n\n`;
+                    resultsDiv.innerHTML += `📊 Technical Details:\n`;
+                    resultsDiv.innerHTML += `   • Recognition attempts: ${result.debug?.attempts || 'N/A'}\n`;
+                    resultsDiv.innerHTML += `   • Audio size: ${result.debug?.audioSize || 'N/A'} bytes\n`;
+                    resultsDiv.innerHTML += `   • Response time: ${response.headers.get('x-ms-request-duration') || 'N/A'}\n`;
+                } else {
+                    resultsDiv.innerHTML += `❌ FAILED: ${result.error}\n\n`;
+                    resultsDiv.innerHTML += `📝 Details: ${result.details}\n\n`;
+                    
+                    if (result.debug) {
+                        resultsDiv.innerHTML += `🔍 Debug Information:\n`;
+                        resultsDiv.innerHTML += JSON.stringify(result.debug, null, 2) + '\n\n';
+                    }
+                    
+                    if (result.troubleshooting) {
+                        resultsDiv.innerHTML += `💡 Troubleshooting Suggestions:\n`;
+                        result.troubleshooting.suggestions?.forEach((suggestion, i) => {
+                            resultsDiv.innerHTML += `   ${i + 1}. ${suggestion}\n`;
+                        });
+                    }
+                }
+
+            } catch (error) {
+                resultsDiv.innerHTML += `\n❌ CRITICAL ERROR: ${error.message}\n`;
+                resultsDiv.innerHTML += `\n🔧 This usually indicates:\n`;
+                resultsDiv.innerHTML += `   • API endpoint is not accessible\n`;
+                resultsDiv.innerHTML += `   • Network connectivity issues\n`;
+                resultsDiv.innerHTML += `   • Azure Function is not deployed\n`;
+            }
+
+            progressDiv.style.display = 'none';
+        }
+
+        async function toggleRecording() {
+            if (!isRecording) {
+                await startRecording();
+            } else {
+                stopRecording();
+            }
+        }
+
+        async function startRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                recordedChunks = [];
+
+                mediaRecorder.ondataavailable = (event) => {
+                    recordedChunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = () => {
+                    recordedBlob = new Blob(recordedChunks, { type: 'audio/wav' });
+                    const audioURL = URL.createObjectURL(recordedBlob);
+                    
+                    const recordedAudio = document.getElementById('recordedAudio');
+                    recordedAudio.src = audioURL;
+                    recordedAudio.style.display = 'block';
+                    
+                    document.getElementById('playRecordBtn').style.display = 'inline-block';
+                    document.getElementById('testRecordBtn').style.display = 'inline-block';
+                    
+                    const statusDiv = document.getElementById('recordingStatus');
+                    statusDiv.style.display = 'block';
+                    statusDiv.innerHTML = `
+✅ Recording Complete!
+
+📊 Recording Details:
+   • Size: ${(recordedBlob.size / 1024).toFixed(1)} KB
+   • Format: WAV
+   • Duration: ${recordedAudio.duration || 'Calculating...'}s
+
+▶️ Play the recording to verify quality before testing
+                    `;
+                };
+
+                mediaRecorder.start();
+                isRecording = true;
+                
+                document.getElementById('recordBtn').innerHTML = '⏹️ Stop Recording';
+                
+                const statusDiv = document.getElementById('recordingStatus');
+                statusDiv.style.display = 'block';
+                statusDiv.innerHTML = '🔴 Recording... Speak clearly in English!\n\nSay something like:\n"Hello, this is a test for speech recognition"';
+                
+            } catch (err) {
+                alert('Microphone access error: ' + err.message);
+            }
+        }
+
+        function stopRecording() {
+            mediaRecorder.stop();
+            mediaRecorder.stream.getTracks().forEach(track => track.stop());
+            isRecording = false;
+            document.getElementById('recordBtn').innerHTML = '🔴 Start Recording';
+        }
+
+        function playRecording() {
+            document.getElementById('recordedAudio').play();
+        }
+
+        async function testRecordedAudio() {
+            if (!recordedBlob) {
+                alert('No recording available to test');
+                return;
+            }
+
+            // Convert recorded blob to file-like object for testing
+            const file = new File([recordedBlob], 'recorded_audio.wav', { type: 'audio/wav' });
+            currentFile = file;
+            await testSpeechRecognition();
+        }
+
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => {
+                    const base64 = reader.result.split(',')[1];
+                    resolve(base64);
+                };
+                reader.onerror = reject;
+            });
+        }
+    </script>
+</body>
+</html>
