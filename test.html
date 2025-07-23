@@ -47,6 +47,13 @@
         <div id="formatResult" class="result" style="display: none;"></div>
     </div>
 
+    <div class="section">
+        <h2>🩺 Quick Diagnosis</h2>
+        <p><strong>Are you getting "All recognition methods failed"?</strong> Run this quick check:</p>
+        <button onclick="runQuickDiagnosis()">🔍 Run Quick Diagnosis</button>
+        <div id="diagnosisResult" class="result" style="display: none;"></div>
+    </div>
+
     <script>
         let mediaRecorder;
         let recordedBlob = null;
@@ -407,6 +414,109 @@ Try using a WAV file for best results.`;
                 reader.onerror = reject;
                 reader.readAsDataURL(blob);
             });
+        }
+
+        async function runQuickDiagnosis() {
+            const resultDiv = document.getElementById('diagnosisResult');
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result';
+            resultDiv.innerHTML = '🔍 Running quick diagnosis...\n\n';
+
+            // Step 1: Test Azure config
+            resultDiv.innerHTML += '1️⃣ Testing Azure Configuration...\n';
+            try {
+                const response = await fetch('/api/speech-to-text', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({}) // Empty request
+                });
+
+                const result = await response.json();
+                
+                if (result.error === 'Missing audio data') {
+                    resultDiv.innerHTML += '   ✅ Azure configuration is working\n\n';
+                } else if (result.error === 'Azure Speech Service configuration missing') {
+                    resultDiv.className = 'result error';
+                    resultDiv.innerHTML += '   ❌ Azure configuration FAILED\n';
+                    resultDiv.innerHTML += '   🔧 SOLUTION: Set up Azure environment variables\n\n';
+                    resultDiv.innerHTML += '   Go to Azure Portal → Static Web App → Configuration\n';
+                    resultDiv.innerHTML += '   Add: AZURE_SPEECH_KEY and AZURE_SPEECH_REGION\n\n';
+                    return;
+                } else {
+                    resultDiv.innerHTML += `   ⚠️ Unexpected response: ${result.error}\n\n`;
+                }
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML += `   ❌ API connection failed: ${error.message}\n\n`;
+                return;
+            }
+
+            // Step 2: Check if audio file is selected
+            const fileInput = document.getElementById('audioFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                resultDiv.innerHTML += '2️⃣ No audio file selected\n';
+                resultDiv.innerHTML += '   📝 Please upload an audio file in Test 3 above, then run this again\n\n';
+                return;
+            }
+
+            resultDiv.innerHTML += `2️⃣ Audio file selected: ${file.name} (${(file.size/1024).toFixed(1)}KB)\n\n`;
+
+            // Step 3: Check audio format
+            resultDiv.innerHTML += '3️⃣ Analyzing audio format...\n';
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const arrayBuffer = await file.arrayBuffer();
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+                const channels = audioBuffer.numberOfChannels;
+                const sampleRate = audioBuffer.sampleRate;
+                
+                resultDiv.innerHTML += `   Channels: ${channels} ${channels === 1 ? '(MONO ✅)' : '(STEREO ⚠️)'}\n`;
+                resultDiv.innerHTML += `   Sample Rate: ${sampleRate}Hz\n\n`;
+
+                if (channels > 1) {
+                    resultDiv.innerHTML += '🎯 LIKELY PROBLEM FOUND:\n';
+                    resultDiv.innerHTML += '   Your audio is STEREO (2 channels)\n';
+                    resultDiv.innerHTML += '   Azure Speech works best with MONO audio\n\n';
+                    resultDiv.innerHTML += '💡 SOLUTION:\n';
+                    resultDiv.innerHTML += '   Click "🔄 Convert to Mono & Test" button above\n\n';
+                } else {
+                    resultDiv.innerHTML += '4️⃣ Testing mono audio with Azure...\n';
+                    
+                    // Test the mono audio
+                    const base64 = await blobToBase64(file);
+                    const response = await fetch('/api/speech-to-text', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            audioData: base64,
+                            format: file.type || 'audio/wav'
+                        })
+                    });
+
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        resultDiv.className = 'result success';
+                        resultDiv.innerHTML += `   ✅ SUCCESS! Recognized: "${result.text}"\n\n`;
+                        resultDiv.innerHTML += '🎉 Your audio works! The issue was probably temporary.\n';
+                    } else {
+                        resultDiv.className = 'result error';
+                        resultDiv.innerHTML += `   ❌ Still failed: ${result.error}\n\n`;
+                        resultDiv.innerHTML += '🔧 OTHER POSSIBLE ISSUES:\n';
+                        resultDiv.innerHTML += '   • Audio too quiet or contains no clear speech\n';
+                        resultDiv.innerHTML += '   • Audio not in English\n';
+                        resultDiv.innerHTML += '   • Audio file corrupted\n';
+                        resultDiv.innerHTML += '   • Try recording a new short test audio\n';
+                    }
+                }
+
+            } catch (error) {
+                resultDiv.innerHTML += `   ❌ Could not analyze audio: ${error.message}\n\n`;
+                resultDiv.innerHTML += '   Try using a WAV file for best results\n';
+            }
         }
     </script>
 </body>
