@@ -226,8 +226,8 @@ class AudioTranslator {
     }
 
     async runAPITranslation() {
-        // Step 1: Convert speech to text using API
-        this.updateProgress('Converting speech to text...', 25);
+        // Step 1: Convert speech to text using API (with mono conversion)
+        this.updateProgress('Processing audio and converting speech to text...', 25);
         const englishText = await this.callSpeechToTextAPI();
 
         if (!englishText || englishText.trim() === '') {
@@ -254,8 +254,19 @@ class AudioTranslator {
 
     async callSpeechToTextAPI() {
         try {
+            // Convert audio to mono first (this fixes most recognition failures!)
+            let audioFile = this.selectedFile;
+            try {
+                console.log('Converting audio to mono for better recognition...');
+                audioFile = await this.convertToMono(this.selectedFile);
+                console.log('✅ Audio converted to mono successfully');
+            } catch (conversionError) {
+                console.warn('⚠️ Mono conversion failed, using original:', conversionError.message);
+                // Continue with original file if conversion fails
+            }
+            
             // Convert file to base64
-            const audioBase64 = await this.fileToBase64(this.selectedFile);
+            const audioBase64 = await this.fileToBase64(audioFile);
             
             const response = await fetch(this.apiConfig.speechToTextEndpoint, {
                 method: 'POST',
@@ -264,7 +275,7 @@ class AudioTranslator {
                 },
                 body: JSON.stringify({
                     audioData: audioBase64,
-                    format: this.selectedFile.type
+                    format: audioFile.type || 'audio/wav'
                 })
             });
 
@@ -451,6 +462,102 @@ class AudioTranslator {
             const v = c === 'x' ? r : (r & 0x3 | 0x8);
             return v.toString(16);
         });
+    }
+
+    // Convert audio file to mono format for better Azure Speech recognition
+    async convertToMono(file) {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // Read and decode the audio file
+        const arrayBuffer = await file.arrayBuffer();
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        
+        // If already mono, return as-is
+        if (audioBuffer.numberOfChannels === 1) {
+            console.log('Audio is already mono, no conversion needed');
+            return file;
+        }
+        
+        console.log(`Converting stereo audio (${audioBuffer.numberOfChannels} channels) to mono...`);
+        
+        // Convert to mono by mixing channels
+        const length = audioBuffer.length;
+        const sampleRate = 16000; // Optimal for Azure Speech
+        const numberOfChannels = 1; // Mono
+        
+        // Create offline context for processing
+        const offlineContext = new OfflineAudioContext(numberOfChannels, Math.floor(length * sampleRate / audioBuffer.sampleRate), sampleRate);
+        
+        // Create buffer source
+        const source = offlineContext.createBufferSource();
+        source.buffer = audioBuffer;
+        
+        // Create channel merger to mix stereo to mono
+        if (audioBuffer.numberOfChannels > 1) {
+            const merger = offlineContext.createChannelMerger(1);
+            const splitter = offlineContext.createChannelSplitter(audioBuffer.numberOfChannels);
+            
+            source.connect(splitter);
+            
+            // Mix all channels to mono
+            for (let i = 0; i < audioBuffer.numberOfChannels; i++) {
+                const gainNode = offlineContext.createGain();
+                gainNode.gain.value = 1 / audioBuffer.numberOfChannels; // Equal mix
+                splitter.connect(gainNode, i);
+                gainNode.connect(merger, 0, 0);
+            }
+            
+            merger.connect(offlineContext.destination);
+        } else {
+            source.connect(offlineContext.destination);
+        }
+        
+        source.start();
+        
+        // Render the audio
+        const renderedBuffer = await offlineContext.startRendering();
+        
+        // Convert to WAV blob
+        return this.audioBufferToWav(renderedBuffer);
+    }
+
+    // Convert AudioBuffer to WAV blob (mono, 16kHz, 16-bit)
+    audioBufferToWav(buffer) {
+        const length = buffer.length;
+        const arrayBuffer = new ArrayBuffer(44 + length * 2);
+        const view = new DataView(arrayBuffer);
+
+        // WAV header
+        const writeString = (offset, string) => {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        };
+
+        writeString(0, 'RIFF');
+        view.setUint32(4, 36 + length * 2, true);
+        writeString(8, 'WAVE');
+        writeString(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true); // PCM
+        view.setUint16(22, 1, true); // Mono
+        view.setUint32(24, buffer.sampleRate, true);
+        view.setUint32(28, buffer.sampleRate * 2, true);
+        view.setUint16(32, 2, true);
+        view.setUint16(34, 16, true);
+        writeString(36, 'data');
+        view.setUint32(40, length * 2, true);
+
+        // Convert float samples to 16-bit PCM
+        const channelData = buffer.getChannelData(0);
+        let offset = 44;
+        for (let i = 0; i < length; i++) {
+            const sample = Math.max(-1, Math.min(1, channelData[i]));
+            view.setInt16(offset, sample * 0x7FFF, true);
+            offset += 2;
+        }
+
+        return new Blob([arrayBuffer], { type: 'audio/wav' });
     }
 }
 
