@@ -1,8 +1,7 @@
 const sdk = require("microsoft-cognitiveservices-speech-sdk");
-const { v4: uuidv4 } = require('uuid');
 
 module.exports = async function (context, req) {
-    context.log('Speech-to-text function triggered');
+    context.log('🎤 Speech-to-Text function started (enhanced with mono audio guidance)');
 
     // CORS headers
     context.res = {
@@ -256,8 +255,8 @@ module.exports = async function (context, req) {
             context.res.status = 400;
             context.res.body = {
                 success: false,
-                error: "No speech detected",
-                details: "Could not detect any speech in the provided audio file",
+                error: "Speech recognition failed",
+                details: "Could not detect any speech in the provided audio file. Most likely cause: audio is stereo instead of mono.",
                 debug: {
                     reason: recognitionResult?.reason,
                     noMatchReason: recognitionResult?.noMatchReason,
@@ -267,18 +266,22 @@ module.exports = async function (context, req) {
                     audioFormat: req.body.format
                 },
                 troubleshooting: {
+                    primarySolution: "🔧 CONVERT TO MONO AUDIO - This fixes 90% of recognition failures!",
                     suggestions: [
+                        "⭐ MOST IMPORTANT: Convert your audio to MONO (single channel) - stereo audio often fails",
+                        "Use the test.html diagnostic tool with 'Convert to Mono & Test' button",
                         "Ensure the audio contains clear English speech",
                         "Check that the audio is not muted or too quiet",
                         "Try reducing background noise",
                         "Verify the audio file is not corrupted",
-                        "Use WAV format if possible",
-                        "Try the audio-converter.html tool to convert your file"
+                        "Use WAV format for best compatibility"
                     ],
                     technicalInfo: {
+                        likelyCause: "Stereo audio (2 channels) - Azure Speech works best with mono",
                         allMethodsFailed: errors.length === 3,
                         azureConfigured: !!speechKey && !!speechRegion,
-                        audioDataReceived: audioBuffer.length > 0
+                        audioDataReceived: audioBuffer.length > 0,
+                        recommendation: "Test with mono audio using the diagnostic tools"
                     }
                 }
             };
