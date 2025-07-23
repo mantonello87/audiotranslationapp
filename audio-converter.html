@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Format Converter</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .section {
+            margin: 25px 0;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            background: #fafafa;
+        }
+        button {
+            background: #007acc;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 8px 4px;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #005a9e;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin: 15px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 4px solid #007acc;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        .error {
+            border-left-color: #dc3545;
+            background: #f8d7da;
+        }
+        .success {
+            border-left-color: #28a745;
+            background: #d4edda;
+        }
+        audio {
+            width: 100%;
+            margin: 10px 0;
+        }
+        .file-input {
+            margin: 10px 0;
+            padding: 10px;
+            border: 2px dashed #ccc;
+            border-radius: 6px;
+            text-align: center;
+        }
+        .file-input.dragover {
+            border-color: #007acc;
+            background: #f0f8ff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Audio Format Converter for Speech Recognition</h1>
+        <p>Convert your audio files to the optimal format for Azure Speech Services.</p>
+
+        <div class="section">
+            <h2>📁 Upload Audio File</h2>
+            <div class="file-input" id="dropZone">
+                <p>Drag and drop an audio file here, or click to browse</p>
+                <input type="file" id="audioFile" accept=".mp3,.wav,.m4a,.aac,.ogg" style="display: none;" />
+                <button onclick="document.getElementById('audioFile').click()">📂 Browse Files</button>
+            </div>
+            <div id="fileInfo" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="section">
+            <h2>🎧 Original Audio</h2>
+            <audio id="originalAudio" controls style="display: none;"></audio>
+            <div id="originalInfo" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="section">
+            <h2>🔄 Convert to Speech-Optimized Format</h2>
+            <p>Convert your audio to WAV format optimized for Azure Speech Recognition:</p>
+            <button id="convertBtn" onclick="convertAudio()" disabled>🔄 Convert to WAV (16kHz, 16-bit, Mono)</button>
+            <div id="conversionStatus" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="section">
+            <h2>📥 Download Converted Audio</h2>
+            <audio id="convertedAudio" controls style="display: none;"></audio>
+            <br>
+            <button id="downloadBtn" onclick="downloadConverted()" style="display: none;">💾 Download WAV File</button>
+            <div id="downloadInfo" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="section">
+            <h2>💡 Tips for Better Speech Recognition</h2>
+            <ul>
+                <li><strong>Use WAV format:</strong> Best compatibility with Azure Speech Services</li>
+                <li><strong>16kHz sample rate:</strong> Optimal for speech recognition</li>
+                <li><strong>Mono audio:</strong> Reduces file size and improves processing</li>
+                <li><strong>Clear speech:</strong> Minimize background noise</li>
+                <li><strong>Proper volume:</strong> Not too quiet, not distorted</li>
+                <li><strong>English language:</strong> Ensure audio contains English speech</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        let originalFile = null;
+        let convertedBlob = null;
+
+        // Set up drag and drop
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('audioFile');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        function handleFile(file) {
+            originalFile = file;
+            
+            // Show file info
+            const fileInfo = document.getElementById('fileInfo');
+            fileInfo.style.display = 'block';
+            fileInfo.className = 'result success';
+            fileInfo.innerHTML = `
+✅ File Selected Successfully!
+
+📁 File Name: ${file.name}
+📏 File Size: ${(file.size / 1024 / 1024).toFixed(2)} MB
+🎵 File Type: ${file.type || 'Unknown'}
+⏰ Last Modified: ${new Date(file.lastModified).toLocaleString()}
+
+Status: Ready for conversion
+            `;
+
+            // Show original audio
+            const originalAudio = document.getElementById('originalAudio');
+            originalAudio.src = URL.createObjectURL(file);
+            originalAudio.style.display = 'block';
+
+            // Enable convert button
+            document.getElementById('convertBtn').disabled = false;
+
+            // Show original audio info
+            const originalInfo = document.getElementById('originalInfo');
+            originalInfo.style.display = 'block';
+            originalInfo.className = 'result';
+            originalInfo.innerHTML = 'ℹ️ Play the audio above to verify it contains clear English speech before converting.';
+        }
+
+        async function convertAudio() {
+            if (!originalFile) {
+                alert('Please select an audio file first');
+                return;
+            }
+
+            const statusDiv = document.getElementById('conversionStatus');
+            statusDiv.style.display = 'block';
+            statusDiv.className = 'result';
+            statusDiv.innerHTML = '🔄 Converting audio... Please wait...';
+
+            document.getElementById('convertBtn').disabled = true;
+
+            try {
+                // Create audio context
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // Read file as array buffer
+                const arrayBuffer = await originalFile.arrayBuffer();
+                
+                // Decode audio data
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                
+                // Convert to mono and resample to 16kHz
+                const targetSampleRate = 16000;
+                const length = Math.floor(audioBuffer.duration * targetSampleRate);
+                const offlineContext = new OfflineAudioContext(1, length, targetSampleRate);
+                
+                // Create buffer source
+                const source = offlineContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(offlineContext.destination);
+                source.start();
+                
+                // Render the audio
+                const renderedBuffer = await offlineContext.startRendering();
+                
+                // Convert to WAV
+                const wavBlob = audioBufferToWav(renderedBuffer);
+                convertedBlob = wavBlob;
+                
+                // Update status
+                statusDiv.className = 'result success';
+                statusDiv.innerHTML = `
+✅ Conversion Successful!
+
+Original: ${originalFile.name} (${(originalFile.size / 1024 / 1024).toFixed(2)} MB)
+Converted: WAV format (${(wavBlob.size / 1024 / 1024).toFixed(2)} MB)
+Sample Rate: 16kHz (optimal for speech recognition)
+Channels: Mono
+Bit Depth: 16-bit
+
+✅ This file should work much better with Azure Speech Services!
+                `;
+
+                // Show converted audio player
+                const convertedAudio = document.getElementById('convertedAudio');
+                convertedAudio.src = URL.createObjectURL(wavBlob);
+                convertedAudio.style.display = 'block';
+
+                // Show download button
+                document.getElementById('downloadBtn').style.display = 'inline-block';
+                
+                // Show download info
+                const downloadInfo = document.getElementById('downloadInfo');
+                downloadInfo.style.display = 'block';
+                downloadInfo.className = 'result';
+                downloadInfo.innerHTML = '💡 Test the converted audio above, then download it to use in your translator app.';
+
+            } catch (error) {
+                statusDiv.className = 'result error';
+                statusDiv.innerHTML = `
+❌ Conversion Failed!
+
+Error: ${error.message}
+
+Possible solutions:
+• Try a different audio file
+• Ensure the file is a valid audio format
+• Check that the audio isn't corrupted
+• Try a smaller file size
+                `;
+            }
+
+            document.getElementById('convertBtn').disabled = false;
+        }
+
+        function downloadConverted() {
+            if (!convertedBlob) {
+                alert('No converted audio available');
+                return;
+            }
+
+            const url = URL.createObjectURL(convertedBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `converted_${originalFile.name.replace(/\.[^/.]+$/, '')}.wav`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            const downloadInfo = document.getElementById('downloadInfo');
+            downloadInfo.className = 'result success';
+            downloadInfo.innerHTML = `
+✅ Download Started!
+
+File: ${a.download}
+Format: WAV (16kHz, 16-bit, Mono)
+
+💡 Use this converted file in your audio translator app for better speech recognition results!
+            `;
+        }
+
+        // Convert AudioBuffer to WAV blob
+        function audioBufferToWav(buffer) {
+            const length = buffer.length;
+            const arrayBuffer = new ArrayBuffer(44 + length * 2);
+            const view = new DataView(arrayBuffer);
+
+            // WAV header
+            const writeString = (offset, string) => {
+                for (let i = 0; i < string.length; i++) {
+                    view.setUint8(offset + i, string.charCodeAt(i));
+                }
+            };
+
+            writeString(0, 'RIFF');
+            view.setUint32(4, 36 + length * 2, true);
+            writeString(8, 'WAVE');
+            writeString(12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true);
+            view.setUint16(22, 1, true);
+            view.setUint32(24, buffer.sampleRate, true);
+            view.setUint32(28, buffer.sampleRate * 2, true);
+            view.setUint16(32, 2, true);
+            view.setUint16(34, 16, true);
+            writeString(36, 'data');
+            view.setUint32(40, length * 2, true);
+
+            // Convert float samples to 16-bit PCM
+            const channelData = buffer.getChannelData(0);
+            let offset = 44;
+            for (let i = 0; i < length; i++) {
+                const sample = Math.max(-1, Math.min(1, channelData[i]));
+                view.setInt16(offset, sample * 0x7FFF, true);
+                offset += 2;
+            }
+
+            return new Blob([arrayBuffer], { type: 'audio/wav' });
+        }
+    </script>
+</body>
+</html>
