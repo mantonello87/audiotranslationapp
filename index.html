@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>English to French Audio Translator</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-content">
+                <div class="logo">
+                    <i class="fas fa-language"></i>
+                    <h1>AudioTranslate</h1>
+                    <span class="demo-badge" id="demoBadge" style="display: none;">DEMO MODE</span>
+                </div>
+                <p class="tagline">Powered by Azure AI</p>
+            </div>
+        </header>
+
+        <main>
+            <div class="upload-section">
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-content">
+                        <div class="upload-icon">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                        </div>
+                        <h3>Upload Your Audio File</h3>
+                        <p class="upload-description">Drag and drop your English audio file here or click to browse</p>
+                        <p class="file-types">Supports MP3, WAV, M4A • Maximum 25MB</p>
+                        <input type="file" id="audioFile" accept=".mp3,.wav,.m4a,audio/*" style="display: none;">
+                        <label for="audioFile" class="btn btn-primary" role="button" tabindex="0">
+                            <i class="fas fa-folder-open"></i> 
+                            <span>Browse Files</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="file-info" id="fileInfo" style="display: none;">
+                    <div class="file-details">
+                        <i class="fas fa-file-audio"></i>
+                        <span id="fileName"></span>
+                        <span id="fileSize"></span>
+                        <button type="button" id="removeFile" class="btn btn-remove">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="action-section">
+                <button type="button" id="translateBtn" class="btn btn-translate" disabled>
+                    <div class="btn-content">
+                        <i class="fas fa-magic"></i>
+                        <span>Translate to French</span>
+                    </div>
+                </button>
+            </div>
+
+            <div class="progress-section" id="progressSection" style="display: none;">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="progress-text" id="progressText">Preparing...</div>
+            </div>
+
+            <div class="results-section" id="resultsSection" style="display: none;">
+                <div class="results-header">
+                    <i class="fas fa-check-circle"></i>
+                    <h3>Translation Complete</h3>
+                </div>
+                
+                <div class="result-item">
+                    <div class="result-header">
+                        <h4>Original Text (English)</h4>
+                    </div>
+                    <div class="text-content" id="originalText"></div>
+                </div>
+
+                <div class="result-item">
+                    <div class="result-header">
+                        <h4>Translated Text (French)</h4>
+                    </div>
+                    <div class="text-content" id="translatedText"></div>
+                </div>
+
+                <div class="result-item">
+                    <div class="result-header">
+                        <i class="fas fa-microphone"></i>
+                        <h4>French Audio</h4>
+                    </div>
+                    <div class="audio-player-container">
+                        <audio controls id="frenchAudio"></audio>
+                        <button type="button" id="downloadBtn" class="btn btn-download">
+                            <i class="fas fa-download"></i>
+                            <span>Download Audio</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="error-section" id="errorSection" style="display: none;">
+                <div class="error-message">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span id="errorText"></span>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/microsoft-cognitiveservices-speech-sdk@1.24.1/distrib/browser/microsoft.cognitiveservices.speech.sdk.bundle.min.js" 
+            onerror="loadFallbackSDK()">
+    </script>
+    <script>
+        // Fallback to original CDN if jsdelivr fails
+        function loadFallbackSDK() {
+            console.log('Primary CDN failed, trying fallback...');
+            const fallbackScript = document.createElement('script');
+            fallbackScript.src = 'https://aka.ms/SpeechSDK/speechsdk-1.24.1.min.js';
+            fallbackScript.onerror = function() {
+                console.error('Both CDNs failed to load Azure Speech SDK');
+                alert('Failed to load Azure Speech SDK from multiple sources. Please check your internet connection and try again.');
+            };
+            document.head.appendChild(fallbackScript);
+        }
+
+        // Wait for Azure SDK to load before initializing the app
+        function waitForSDKAndInitialize() {
+            if (typeof SpeechSDK !== 'undefined' || typeof Microsoft !== 'undefined') {
+                console.log('Azure Speech SDK loaded successfully');
+                // The app will initialize via DOMContentLoaded event in script.js
+            } else {
+                console.log('Waiting for Azure Speech SDK...');
+                setTimeout(waitForSDKAndInitialize, 100);
+            }
+        }
+        waitForSDKAndInitialize();
+    </script>
+    <script src="script.js"></script>
+</body>
+</html>
